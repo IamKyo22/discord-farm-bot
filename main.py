@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import os
 import io
-import aiohttp # Necessário para baixar imagens de links de embeds
+import aiohttp
 from datetime import datetime, timedelta, timezone
 
 TOKEN = os.getenv("TOKEN")
@@ -13,8 +13,10 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Configurações de IDs
-USER_ALVO = 716390085896962058
+# --- CONFIGURAÇÕES DE IDS ---
+# Agora usamos uma lista para os alvos (O usuário original + o Bot de Pokémon)
+ALVOS_IDS = [716390085896962058, 854233015475109888]
+
 AMIGA_ID = 1115812841782517842
 VOCE_ID = 1296916918728658980
 
@@ -41,116 +43,119 @@ CANAIS_MONITORADOS = [
 mensagens_vistas = set()
 dm_cache = {}
 
-# --- FUNÇÃO PARA PEGAR IMAGEM DE URL (EMBEDS) ---
+# --- FUNÇÃO AUXILIAR: DOWNLOAD DE IMAGEM ---
 async def download_image(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                return await resp.read()
-            return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    return await resp.read()
+    except:
+        return None
 
-# --- FUNÇÃO PRINCIPAL DE ALERTA ---
+# --- FUNÇÃO DE ALERTA ---
 async def enviar_alerta(message):
-    # Criando o Embed de decoração
-    embed_base = discord.Embed(
-        title="✨ Novo Alerta Detectado! ✨",
-        description=f"**Canal:** {message.channel.mention}\n**Autor:** `{message.author}`",
-        color=0xff69b4, # Cor rosa/pink
+    # Criamos um embed decorativo personalizado
+    embed_decoracao = discord.Embed(
+        title="🐾 Captura de Dados Detectada!",
+        description=f"**Origem:** {message.channel.mention}\n**Enviado por:** {message.author.mention}",
+        color=0x7289da, # Blurple do Discord
         timestamp=datetime.now()
     )
-    
+    embed_decoracao.set_footer(text="Sistema de Monitoramento Ativo")
+
+    # Coleta conteúdo e embeds originais
     conteudo_texto = message.content if message.content else ""
-    
-    # Se a mensagem original tiver embeds (ex: bot de pokemon)
-    embeds_copiados = []
-    lista_urls_imagens = []
+    embeds_para_enviar = [embed_decoracao]
+    bytes_arquivos = []
 
+    # Se a mensagem tiver Embeds (comum em bots de Pokémon)
     if message.embeds:
-        for emb in message.embeds:
-            # Copia o embed original para manter a formatação do bot alvo
-            novo_emb = emb.copy()
-            embeds_copiados.append(novo_emb)
-            # Tenta pegar a imagem do embed
-            if emb.image.url: lista_urls_imagens.append(emb.image.url)
-            if emb.thumbnail.url: lista_urls_imagens.append(emb.thumbnail.url)
+        for index, emb in enumerate(message.embeds):
+            embeds_para_enviar.append(emb.copy()) # Copia o embed original
+            
+            # Tenta extrair imagem do embed (foto do pokémon)
+            url_img = None
+            if emb.image.url: url_img = emb.image.url
+            elif emb.thumbnail.url: url_img = emb.thumbnail.url
+            
+            if url_img:
+                img_data = await download_image(url_img)
+                if img_data:
+                    bytes_arquivos.append((img_data, f"pokemon_{index}.png"))
 
-    # Preparando arquivos (Attachments + Imagens de Embeds)
-    arquivos_finais = []
-    
-    # 1. Processa anexos comuns
+    # Processa anexos normais (se houver)
     if message.attachments:
-        for anexo in message.attachments:
-            b = await anexo.read()
-            arquivos_finais.append((b, anexo.filename))
+        for att in message.attachments:
+            att_data = await att.read()
+            bytes_arquivos.append((att_data, att.filename))
 
-    # 2. Processa imagens que estavam dentro de embeds
-    for url in lista_urls_imagens:
-        img_bytes = await download_image(url)
-        if img_bytes:
-            arquivos_finais.append((img_bytes, "pokemon_image.png"))
-
-    # Montando as listas de arquivos para cada envio (evitar conflito de IO)
-    def gerar_files():
-        return [discord.File(io.BytesIO(b), filename=f) for b, f in arquivos_finais]
+    # Função interna para não "gastar" o BytesIO no primeiro envio
+    def preparar_files():
+        return [discord.File(io.BytesIO(b), filename=n) for b, n in bytes_arquivos]
 
     # --- ENVIO PARA VOCÊ ---
     try:
         await dm_cache[VOCE_ID].send(
-            content=f"🔗 [Ir para mensagem]({message.jump_url})\n{conteudo_texto}",
-            embeds=[embed_base] + embeds_copiados,
-            files=gerar_files()
+            content=f"🔗 **Link:** {message.jump_url}\n{conteudo_texto}",
+            embeds=embeds_para_enviar,
+            files=preparar_files()
         )
     except Exception as e:
-        print(f"Erro ao enviar para Você: {e}")
+        print(f"Erro ao enviar DM para Você: {e}")
 
     # --- ENVIO PARA AMIGA ---
     try:
-        msg_especial = "💖 **Yori:** Você é a pessoa mais especial e angelical que ja vi, tsu."
+        nota = "💖 **Yori:** Veja isso, tsu! Um novo pokémon ou mensagem importante."
         await dm_cache[AMIGA_ID].send(
-            content=f"{msg_especial}\n🔗 [Mensagem original]({message.jump_url})\n{conteudo_texto}",
-            embeds=[embed_base] + embeds_copiados,
-            files=gerar_files()
+            content=f"{nota}\n🔗 {message.jump_url}\n{conteudo_texto}",
+            embeds=embeds_para_enviar,
+            files=preparar_files()
         )
     except Exception as e:
-        print(f"Erro ao enviar para Amiga: {e}")
+        print(f"Erro ao enviar DM para Amiga: {e}")
 
-# --- RESTANTE DO CÓDIGO (EVENTOS E LOOP) ---
+# --- EVENTOS ---
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot Online: {bot.user}")
+    print(f"🚀 Bot iniciado como {bot.user}")
+    # Cache das DMs
     for uid in [AMIGA_ID, VOCE_ID]:
         try:
             user = await bot.fetch_user(uid)
             dm_cache[uid] = await user.create_dm()
         except:
-            print(f"❌ Não consegui abrir DM com {uid}")
+            print(f"⚠️ Não foi possível abrir DM com {uid}")
     check_recent.start()
 
 @bot.event
 async def on_message(message):
-    if message.author.bot and message.author.id != USER_ALVO: # Ignora outros bots, mas aceita se o alvo for bot
-        return
-    if message.author.id == USER_ALVO and message.channel.id in CANAIS_MONITORADOS:
+    # Verifica se o autor é um dos alvos e se o canal está na lista
+    if message.author.id in ALVOS_IDS and message.channel.id in CANAIS_MONITORADOS:
         if message.id not in mensagens_vistas:
             mensagens_vistas.add(message.id)
             await enviar_alerta(message)
+    
     await bot.process_commands(message)
 
-@tasks.loop(seconds=10)
+# --- LOOP DE VARREDURA (PARA CASO O BOT CAIA POR SEGUNDOS) ---
+@tasks.loop(seconds=15)
 async def check_recent():
     for guild in bot.guilds:
         for channel_id in CANAIS_MONITORADOS:
             channel = guild.get_channel(channel_id)
             if not channel: continue
+            
             try:
-                async for msg in channel.history(limit=20):
-                    if (msg.author.id == USER_ALVO and 
+                async for msg in channel.history(limit=15):
+                    if (msg.author.id in ALVOS_IDS and 
                         msg.id not in mensagens_vistas and 
                         (datetime.now(timezone.utc) - msg.created_at).total_seconds() < 300):
+                        
                         mensagens_vistas.add(msg.id)
                         await enviar_alerta(msg)
             except:
-                pass
+                continue
 
 bot.run(TOKEN)
