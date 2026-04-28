@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 import os
+import io
 from datetime import datetime, timedelta, timezone
 
 TOKEN = os.getenv("TOKEN")
@@ -12,7 +13,6 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 USER_ALVO = 716390085896962058
-
 AMIGA_ID = 1115812841782517842
 VOCE_ID = 1296916918728658980
 
@@ -34,22 +34,63 @@ CANAIS_MONITORADOS = [
     1498743473740709918, 1498743476735443004, 1498743480048943134,
     1498743483391934644, 1498743486831132733, 1498743490073595975,
     1498743493181575168, 1498743497023422657
-    ]
+]
 
 mensagens_vistas = set()
 dm_cache = {}
 
+# --- FUNÇÕES DE APOIO ---
+
+async def enviar_alerta(message):
+    conteudo = message.content if message.content else "(sem texto)"
+
+    alerta = (
+        f"🚨 ALERTA 🚨\n"
+        f"Canal: {message.channel.mention}\n"
+        f"Autor: {message.author}\n"
+        f"Mensagem:\n{conteudo}\n\n"
+        f"🔗 Link: {message.jump_url}"
+    )
+
+    arquivos_voce = []
+    arquivos_amiga = []
+    
+    if message.attachments:
+        for anexo in message.attachments:
+            try:
+                file_bytes = await anexo.read()
+                # Cria cópias independentes para não dar erro no segundo envio
+                arquivos_voce.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
+                arquivos_amiga.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
+            except Exception as e:
+                print(f"Erro ao processar anexo: {e}")
+
+    # Envio para você
+    try:
+        await dm_cache[VOCE_ID].send(alerta, files=arquivos_voce)
+    except Exception as e:
+        print(f"Erro você: {e}")
+
+    # Envio para sua amiga
+    mensagem_amiga = alerta + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
+    try:
+        await dm_cache[AMIGA_ID].send(mensagem_amiga, files=arquivos_amiga)
+    except Exception as e:
+        print(f"Erro amiga: {e}")
+
+# --- EVENTOS DO BOT ---
+
 @bot.event
 async def on_ready():
     print(f"Logado como {bot.user}")
-
     for uid in [AMIGA_ID, VOCE_ID]:
-        user = await bot.fetch_user(uid)
-        dm_cache[uid] = await user.create_dm()
-
+        try:
+            user = await bot.fetch_user(uid)
+            dm_cache[uid] = await user.create_dm()
+        except Exception as e:
+            print(f"Erro ao criar DM para {uid}: {e}")
     check_recent.start()
 
-# 🔴 tempo real
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -62,7 +103,8 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# 🟡 varredura últimos 5 min
+# --- TAREFAS EM SEGUNDO PLANO ---
+
 @tasks.loop(seconds=10)
 async def check_recent():
     for guild in bot.guilds:
@@ -80,46 +122,7 @@ async def check_recent():
                     ):
                         mensagens_vistas.add(msg.id)
                         await enviar_alerta(msg)
-
             except Exception as e:
-                print(f"Erro ao varrer: {e}")
-
-
-
-    async def enviar_alerta(message):
-    # Tudo aqui dentro tem que ter 4 espaços na frente
-    conteudo = message.content if message.content else "(sem texto)"
-
-    alerta = (
-        f"🚨 ALERTA 🚨\n"
-        f"Canal: {message.channel.mention}\n"
-        f"Autor: {message.author}\n"
-        f"Mensagem:\n{conteudo}\n\n"
-        f"🔗 Link: {message.jump_url}"
-    )
-
-    arquivos_voce = []
-    arquivos_amiga = []
-    
-    if message.attachments:
-        for anexo in message.attachments:
-            # Baixa o conteúdo do anexo
-            file_bytes = await anexo.read()
-            # Cria cópias para os dois envios
-            arquivos_voce.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
-            arquivos_amiga.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
-
-    # Envio para você
-    try:
-        await dm_cache[VOCE_ID].send(alerta, files=arquivos_voce)
-    except Exception as e:
-        print(f"Erro você: {e}")
-
-    # Envio para sua amiga
-    mensagem_amiga = alerta + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
-    try:
-        await dm_cache[AMIGA_ID].send(mensagem_amiga, files=arquivos_amiga)
-    except Exception as e:
-        print(f"Erro amiga: {e}"
+                print(f"Erro ao varrer canal {channel_id}: {e}")
 
 bot.run(TOKEN)
