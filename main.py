@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import os
 import io
+import aiohttp # Necessário para baixar imagens de links de embeds
 from datetime import datetime, timedelta, timezone
 
 TOKEN = os.getenv("TOKEN")
@@ -12,6 +13,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Configurações de IDs
 USER_ALVO = 716390085896962058
 AMIGA_ID = 1115812841782517842
 VOCE_ID = 1296916918728658980
@@ -39,90 +41,116 @@ CANAIS_MONITORADOS = [
 mensagens_vistas = set()
 dm_cache = {}
 
-# --- FUNÇÕES DE APOIO ---
+# --- FUNÇÃO PARA PEGAR IMAGEM DE URL (EMBEDS) ---
+async def download_image(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                return await resp.read()
+            return None
 
+# --- FUNÇÃO PRINCIPAL DE ALERTA ---
 async def enviar_alerta(message):
-    conteudo = message.content if message.content else "(sem texto)"
-
-    alerta = (
-        f"🚨 ALERTA 🚨\n"
-        f"Canal: {message.channel.mention}\n"
-        f"Autor: {message.author}\n"
-        f"Mensagem:\n{conteudo}\n\n"
-        f"🔗 Link: {message.jump_url}"
+    # Criando o Embed de decoração
+    embed_base = discord.Embed(
+        title="✨ Novo Alerta Detectado! ✨",
+        description=f"**Canal:** {message.channel.mention}\n**Autor:** `{message.author}`",
+        color=0xff69b4, # Cor rosa/pink
+        timestamp=datetime.now()
     )
-
-    arquivos_voce = []
-    arquivos_amiga = []
     
+    conteudo_texto = message.content if message.content else ""
+    
+    # Se a mensagem original tiver embeds (ex: bot de pokemon)
+    embeds_copiados = []
+    lista_urls_imagens = []
+
+    if message.embeds:
+        for emb in message.embeds:
+            # Copia o embed original para manter a formatação do bot alvo
+            novo_emb = emb.copy()
+            embeds_copiados.append(novo_emb)
+            # Tenta pegar a imagem do embed
+            if emb.image.url: lista_urls_imagens.append(emb.image.url)
+            if emb.thumbnail.url: lista_urls_imagens.append(emb.thumbnail.url)
+
+    # Preparando arquivos (Attachments + Imagens de Embeds)
+    arquivos_finais = []
+    
+    # 1. Processa anexos comuns
     if message.attachments:
         for anexo in message.attachments:
-            try:
-                file_bytes = await anexo.read()
-                # Cria cópias independentes para não dar erro no segundo envio
-                arquivos_voce.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
-                arquivos_amiga.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
-            except Exception as e:
-                print(f"Erro ao processar anexo: {e}")
+            b = await anexo.read()
+            arquivos_finais.append((b, anexo.filename))
 
-    # Envio para você
+    # 2. Processa imagens que estavam dentro de embeds
+    for url in lista_urls_imagens:
+        img_bytes = await download_image(url)
+        if img_bytes:
+            arquivos_finais.append((img_bytes, "pokemon_image.png"))
+
+    # Montando as listas de arquivos para cada envio (evitar conflito de IO)
+    def gerar_files():
+        return [discord.File(io.BytesIO(b), filename=f) for b, f in arquivos_finais]
+
+    # --- ENVIO PARA VOCÊ ---
     try:
-        await dm_cache[VOCE_ID].send(alerta, files=arquivos_voce)
+        await dm_cache[VOCE_ID].send(
+            content=f"🔗 [Ir para mensagem]({message.jump_url})\n{conteudo_texto}",
+            embeds=[embed_base] + embeds_copiados,
+            files=gerar_files()
+        )
     except Exception as e:
-        print(f"Erro você: {e}")
+        print(f"Erro ao enviar para Você: {e}")
 
-    # Envio para sua amiga
-    mensagem_amiga = alerta + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
+    # --- ENVIO PARA AMIGA ---
     try:
-        await dm_cache[AMIGA_ID].send(mensagem_amiga, files=arquivos_amiga)
+        msg_especial = "💖 **Yori:** Você é a pessoa mais especial e angelical que ja vi, tsu."
+        await dm_cache[AMIGA_ID].send(
+            content=f"{msg_especial}\n🔗 [Mensagem original]({message.jump_url})\n{conteudo_texto}",
+            embeds=[embed_base] + embeds_copiados,
+            files=gerar_files()
+        )
     except Exception as e:
-        print(f"Erro amiga: {e}")
+        print(f"Erro ao enviar para Amiga: {e}")
 
-# --- EVENTOS DO BOT ---
+# --- RESTANTE DO CÓDIGO (EVENTOS E LOOP) ---
 
 @bot.event
 async def on_ready():
-    print(f"Logado como {bot.user}")
+    print(f"✅ Bot Online: {bot.user}")
     for uid in [AMIGA_ID, VOCE_ID]:
         try:
             user = await bot.fetch_user(uid)
             dm_cache[uid] = await user.create_dm()
-        except Exception as e:
-            print(f"Erro ao criar DM para {uid}: {e}")
+        except:
+            print(f"❌ Não consegui abrir DM com {uid}")
     check_recent.start()
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
+    if message.author.bot and message.author.id != USER_ALVO: # Ignora outros bots, mas aceita se o alvo for bot
         return
-
     if message.author.id == USER_ALVO and message.channel.id in CANAIS_MONITORADOS:
         if message.id not in mensagens_vistas:
             mensagens_vistas.add(message.id)
             await enviar_alerta(message)
-
     await bot.process_commands(message)
-
-# --- TAREFAS EM SEGUNDO PLANO ---
 
 @tasks.loop(seconds=10)
 async def check_recent():
     for guild in bot.guilds:
         for channel_id in CANAIS_MONITORADOS:
             channel = guild.get_channel(channel_id)
-            if not channel:
-                continue
-
+            if not channel: continue
             try:
-                async for msg in channel.history(limit=50):
-                    if (
-                        msg.author.id == USER_ALVO and
-                        msg.id not in mensagens_vistas and
-                        datetime.now(timezone.utc) - msg.created_at < timedelta(minutes=5)
-                    ):
+                async for msg in channel.history(limit=20):
+                    if (msg.author.id == USER_ALVO and 
+                        msg.id not in mensagens_vistas and 
+                        (datetime.now(timezone.utc) - msg.created_at).total_seconds() < 300):
                         mensagens_vistas.add(msg.id)
                         await enviar_alerta(msg)
-            except Exception as e:
-                print(f"Erro ao varrer canal {channel_id}: {e}")
+            except:
+                pass
 
 bot.run(TOKEN)
