@@ -57,7 +57,7 @@ async def check_recent():
                 continue
 
             try:
-                async for msg in channel.history(limit=50):
+                async for msg in channel.history(limit=800):
                     if (
                         msg.author.id == USER_ALVO and
                         msg.id not in mensagens_vistas and
