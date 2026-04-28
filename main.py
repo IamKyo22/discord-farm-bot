@@ -52,6 +52,7 @@ async def create_farm(ctx):
         await ctx.send(f"Erro: {e}")
         print(f"ERRO: {e}")
 
+intents.message_content = True 
 # proteção contra token vazio
 if not TOKEN:
     print("ERRO: TOKEN não encontrado nas variáveis!")
