@@ -69,12 +69,13 @@ async def check_recent():
             except Exception as e:
                 print(f"Erro ao varrer: {e}")
 
-# 🚨 envio
 async def enviar_alerta(message):
     alerta = (
         f"🚨 ALERTA 🚨\n"
-        f"Canal: {message.channel.name}\n"
-        f"Mensagem: {message.content}"
+        f"Canal: {message.channel.mention}\n"
+        f"Autor: {message.author}\n"
+        f"Mensagem:\n{message.content}\n\n"
+        f"🔗 Link: {message.jump_url}"
     )
 
     try:
