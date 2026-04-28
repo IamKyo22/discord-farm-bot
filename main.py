@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 TOKEN = os.getenv("TOKEN")
 
@@ -21,9 +21,7 @@ CANAIS_MONITORADOS = [
     1498743337375498341, 1498743340924014835, 1498743344120201216
 ]
 
-# cache pra evitar repetir mensagem
 mensagens_vistas = set()
-
 dm_cache = {}
 
 @bot.event
@@ -49,12 +47,10 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# 🟡 varredura a cada 10s (últimos 5 min)
+# 🟡 varredura últimos 5 min
 @tasks.loop(seconds=10)
 async def check_recent():
-    guilds = bot.guilds
-
-    for guild in guilds:
+    for guild in bot.guilds:
         for channel_id in CANAIS_MONITORADOS:
             channel = guild.get_channel(channel_id)
             if not channel:
@@ -62,17 +58,18 @@ async def check_recent():
 
             try:
                 async for msg in channel.history(limit=50):
-                    if (msg.author.id == USER_ALVO and 
+                    if (
+                        msg.author.id == USER_ALVO and
                         msg.id not in mensagens_vistas and
-                        datetime.utcnow() - msg.created_at < timedelta(minutes=5)):
-
+                        datetime.now(timezone.utc) - msg.created_at < timedelta(minutes=5)
+                    ):
                         mensagens_vistas.add(msg.id)
                         await enviar_alerta(msg)
 
             except Exception as e:
                 print(f"Erro ao varrer: {e}")
 
-# 🚨 envio de alerta
+# 🚨 envio
 async def enviar_alerta(message):
     alerta = (
         f"🚨 ALERTA 🚨\n"
