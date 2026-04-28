@@ -87,6 +87,9 @@ async def check_recent():
 async def enviar_alerta(message):
     conteudo = message.content if message.content else "(sem texto)"
 
+    async def enviar_alerta(message):
+    conteudo = message.content if message.content else "(sem texto)"
+
     alerta = (
         f"🚨 ALERTA 🚨\n"
         f"Canal: {message.channel.mention}\n"
@@ -95,25 +98,33 @@ async def enviar_alerta(message):
         f"🔗 Link: {message.jump_url}"
     )
 
-    # pega anexos (imagens, vídeos, etc)
-    anexos = ""
+    # Prepara as listas de anexos para enviar
+    arquivos_voce = []
+    arquivos_amiga = []
+    
     if message.attachments:
-        anexos = "\n📎 Anexos:\n" + "\n".join(a.url for a in message.attachments)
-
-    alerta_final = alerta + anexos
+        for anexo in message.attachments:
+            # Lê os bytes da imagem/arquivo (faz o download temporário na memória)
+            file_bytes = await anexo.read()
+            
+            # Cria objetos discord.File independentes para cada envio
+            arquivos_voce.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
+            arquivos_amiga.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
 
     # envia pra você
     try:
-        await dm_cache[VOCE_ID].send(alerta_final)
+        # Passamos a lista de arquivos usando o parâmetro 'files='
+        await dm_cache[VOCE_ID].send(alerta, files=arquivos_voce)
     except Exception as e:
         print(f"Erro você: {e}")
 
     # envia pra sua amiga com mensagem especial 💖
+    mensagem_amiga = alerta + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
     try:
-        await dm_cache[AMIGA_ID].send(
-            alerta_final + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
-        )
+        # Passamos a segunda lista de arquivos para ela
+        await dm_cache[AMIGA_ID].send(mensagem_amiga, files=arquivos_amiga)
     except Exception as e:
+        print(f"Erro amiga: {e}")
         print(f"Erro amiga: {e}")
 
 bot.run(TOKEN)
