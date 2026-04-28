@@ -70,22 +70,33 @@ async def check_recent():
                 print(f"Erro ao varrer: {e}")
 
 async def enviar_alerta(message):
+    conteudo = message.content if message.content else "(sem texto)"
+
     alerta = (
         f"🚨 ALERTA 🚨\n"
         f"Canal: {message.channel.mention}\n"
         f"Autor: {message.author}\n"
-        f"Mensagem:\n{message.content}\n\n"
+        f"Mensagem:\n{conteudo}\n\n"
         f"🔗 Link: {message.jump_url}"
     )
 
+    # pega anexos (imagens, vídeos, etc)
+    anexos = ""
+    if message.attachments:
+        anexos = "\n📎 Anexos:\n" + "\n".join(a.url for a in message.attachments)
+
+    alerta_final = alerta + anexos
+
+    # envia pra você
     try:
-        await dm_cache[VOCE_ID].send(alerta)
+        await dm_cache[VOCE_ID].send(alerta_final)
     except Exception as e:
         print(f"Erro você: {e}")
 
+    # envia pra sua amiga com mensagem especial 💖
     try:
         await dm_cache[AMIGA_ID].send(
-            alerta + "\n\n💖 Você é a pessoa mais angelical do mundo 💖"
+            alerta_final + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
         )
     except Exception as e:
         print(f"Erro amiga: {e}")
