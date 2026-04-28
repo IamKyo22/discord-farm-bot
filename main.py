@@ -87,6 +87,7 @@ async def check_recent():
 
 
     async def enviar_alerta(message):
+    # Tudo aqui dentro tem que ter 4 espaços na frente
     conteudo = message.content if message.content else "(sem texto)"
 
     alerta = (
@@ -97,33 +98,28 @@ async def check_recent():
         f"🔗 Link: {message.jump_url}"
     )
 
-    # Prepara as listas de anexos para enviar
     arquivos_voce = []
     arquivos_amiga = []
     
     if message.attachments:
         for anexo in message.attachments:
-            # Lê os bytes da imagem/arquivo (faz o download temporário na memória)
+            # Baixa o conteúdo do anexo
             file_bytes = await anexo.read()
-            
-            # Cria objetos discord.File independentes para cada envio
+            # Cria cópias para os dois envios
             arquivos_voce.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
             arquivos_amiga.append(discord.File(io.BytesIO(file_bytes), filename=anexo.filename))
 
-    # envia pra você
+    # Envio para você
     try:
-        # Passamos a lista de arquivos usando o parâmetro 'files='
         await dm_cache[VOCE_ID].send(alerta, files=arquivos_voce)
     except Exception as e:
         print(f"Erro você: {e}")
 
-    # envia pra sua amiga com mensagem especial 💖
+    # Envio para sua amiga
     mensagem_amiga = alerta + "\n\nYori: Você é a pessoa mais especial e angelical que ja vi, tsu."
     try:
-        # Passamos a segunda lista de arquivos para ela
         await dm_cache[AMIGA_ID].send(mensagem_amiga, files=arquivos_amiga)
     except Exception as e:
-        print(f"Erro amiga: {e}")
-        print(f"Erro amiga: {e}")
+        print(f"Erro amiga: {e}"
 
 bot.run(TOKEN)
