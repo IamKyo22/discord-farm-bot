@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import os
-import asyncio
 
 TOKEN = os.getenv("TOKEN")
 
@@ -15,46 +14,42 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f'Logado como {bot.user}')
 
-@bot.command(name="chanell")
-async def create_farm(ctx):
+@bot.command()
+async def ids(ctx):
     try:
-        if ctx.guild is None:
-            return await ctx.send("Usa isso em um servidor.")
+        guild = ctx.guild
 
-        # cria categoria
-        category = await ctx.guild.create_category("🌿 farm")
+        # pega a categoria
+        category = discord.utils.get(guild.categories, id=1498743325526855762)
 
-        canais_ids = []
+        if not category:
+            return await ctx.send("Categoria não encontrada 💀")
 
-        for i in range(1, 91):
-            channel = await ctx.guild.create_text_channel(
-                f"farm-{i} 🌿",
-                category=category
-            )
-            canais_ids.append(str(channel.id))
-            await asyncio.sleep(0.5)
+        canais_ids = [str(channel.id) for channel in category.channels]
 
-        resultado = "@poketwo redirect " + " ".join(canais_ids)
+        resultado = " ".join(canais_ids)
 
-        print(resultado)
+        # pega canal onde vai enviar
+        canal_envio = guild.get_channel(1286477337311051778)
 
-        # evita limite de 2000 chars
+        if not canal_envio:
+            return await ctx.send("Canal de envio não encontrado 💀")
+
+        # divide se passar de 2000 chars
         if len(resultado) > 2000:
             partes = [resultado[i:i+1900] for i in range(0, len(resultado), 1900)]
             for parte in partes:
-                await ctx.send(parte)
+                await canal_envio.send(parte)
         else:
-            await ctx.send(resultado)
+            await canal_envio.send(resultado)
 
-        await ctx.send("🌿 Farm criada + redirect pronto!")
+        await ctx.send("IDs enviados com sucesso 😈")
 
     except Exception as e:
-        await ctx.send(f"Erro: {e}")
         print(f"ERRO: {e}")
+        await ctx.send(f"Erro: {e}")
 
-
-# proteção contra token vazio
 if not TOKEN:
-    print("ERRO: TOKEN não encontrado nas variáveis!")
+    print("ERRO: TOKEN não encontrado!")
 else:
     bot.run(TOKEN)
