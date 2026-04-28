@@ -49,4 +49,4 @@ async def create_farm(ctx):
 
     await ctx.send("🌿 Farm criada + redirect pronto!")
 
-bot.run(TOKEN)
+bot.run(MTQ5ODcyODA0OTQ4NTgxMTcyMg.GuOKNm.Ie8lmhSSVGyJgFTSoESKASUBGJCOWqmYEqw5Tw)
