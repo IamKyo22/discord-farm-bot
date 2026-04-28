@@ -84,7 +84,7 @@ async def check_recent():
             except Exception as e:
                 print(f"Erro ao varrer: {e}")
 
-sync def enviar_alerta(message):
+async def enviar_alerta(message):
     conteudo = message.content if message.content else "(sem texto)"
 
     alerta = (
